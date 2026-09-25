@@ -118,25 +118,39 @@ pub struct Effort {
     pub level: Option<String>,
 }
 
-/// Reset timestamp as reported by Claude Code: a unix timestamp in seconds
-/// (current versions) or an RFC 3339 string (defensive, in case it changes).
-#[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
-pub enum ResetsAt {
-    Unix(i64),
-    Rfc3339(String),
-}
+/// Reset timestamp as reported by Claude Code: epoch seconds (integer or
+/// fractional) or an RFC 3339 string. Any other shape is treated as absent so
+/// this optional field can never fail the whole statusline input.
+#[derive(Debug, Clone)]
+pub struct ResetsAt(String);
 
 impl ResetsAt {
-    /// Normalize to an RFC 3339 string so downstream code handles one format
-    pub fn to_rfc3339(&self) -> Option<String> {
-        match self {
-            ResetsAt::Rfc3339(s) => Some(s.clone()),
-            ResetsAt::Unix(secs) => {
-                chrono::DateTime::from_timestamp(*secs, 0).map(|dt| dt.to_rfc3339())
+    fn from_json(value: &serde_json::Value) -> Option<Self> {
+        match value {
+            serde_json::Value::String(s) if !s.trim().is_empty() => Some(Self(s.clone())),
+            serde_json::Value::Number(n) => {
+                let secs = n
+                    .as_i64()
+                    .or_else(|| n.as_f64().map(|f| f.trunc() as i64))?;
+                chrono::DateTime::from_timestamp(secs, 0).map(|dt| Self(dt.to_rfc3339()))
             }
+            _ => None,
         }
     }
+
+    /// Normalized RFC 3339 string so downstream code handles one format
+    pub fn to_rfc3339(&self) -> Option<String> {
+        Some(self.0.clone())
+    }
+}
+
+/// Lenient deserializer: unrecognised values become `None` instead of an error
+fn deserialize_resets_at<'de, D>(deserializer: D) -> Result<Option<ResetsAt>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.as_ref().and_then(ResetsAt::from_json))
 }
 
 /// Rate-limit window as reported by Claude Code in the statusline input
@@ -144,7 +158,7 @@ impl ResetsAt {
 pub struct RateLimitWindow {
     #[serde(default)]
     pub used_percentage: Option<f64>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_resets_at")]
     pub resets_at: Option<ResetsAt>,
 }
 

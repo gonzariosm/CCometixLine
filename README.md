@@ -243,6 +243,12 @@ Targets are `SEGMENT.KEY`, where `SEGMENT` is the id used in `config.toml`
 (`model`, `directory`, `git`, `context_window`, `usage`, `credits`, `cost`,
 `session`, `output_style`, `update`). Unknown keys are saved with a warning.
 
+The TUI starts from `config.toml`, the file the statusline renders. Theme
+files under `~/.claude/ccline/themes/` are applied only when you switch
+themes (number keys, `P`, `R` or `--theme`), so edits made by hand to a theme
+file do not show up until you re-select that theme. Upstream reloaded the
+active theme file on startup, which discarded `config.toml` edits on save.
+
 ### Claude Code Enhancement
 
 ```bash

@@ -67,6 +67,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         config.save()?;
         println!("Saved config");
+        if cli.options {
+            print!("{}", options::render_options(&config));
+        }
         return Ok(());
     }
 
