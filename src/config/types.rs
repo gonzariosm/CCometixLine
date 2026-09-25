@@ -69,6 +69,7 @@ pub enum SegmentId {
     Git,
     ContextWindow,
     Usage,
+    Credits,
     Cost,
     Session,
     OutputStyle,
@@ -110,6 +111,50 @@ pub struct OutputStyle {
     pub name: String,
 }
 
+/// Effort level reported by Claude Code for the current turn
+/// (e.g. "low", "medium", "high", "xhigh", "max").
+#[derive(Deserialize)]
+pub struct Effort {
+    pub level: Option<String>,
+}
+
+/// Reset timestamp as reported by Claude Code: a unix timestamp in seconds
+/// (current versions) or an RFC 3339 string (defensive, in case it changes).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum ResetsAt {
+    Unix(i64),
+    Rfc3339(String),
+}
+
+impl ResetsAt {
+    /// Normalize to an RFC 3339 string so downstream code handles one format
+    pub fn to_rfc3339(&self) -> Option<String> {
+        match self {
+            ResetsAt::Rfc3339(s) => Some(s.clone()),
+            ResetsAt::Unix(secs) => {
+                chrono::DateTime::from_timestamp(*secs, 0).map(|dt| dt.to_rfc3339())
+            }
+        }
+    }
+}
+
+/// Rate-limit window as reported by Claude Code in the statusline input
+#[derive(Debug, Clone, Deserialize)]
+pub struct RateLimitWindow {
+    #[serde(default)]
+    pub used_percentage: Option<f64>,
+    #[serde(default)]
+    pub resets_at: Option<ResetsAt>,
+}
+
+/// Rate limits reported by Claude Code (five-hour session, seven-day week)
+#[derive(Debug, Clone, Deserialize)]
+pub struct RateLimits {
+    pub five_hour: Option<RateLimitWindow>,
+    pub seven_day: Option<RateLimitWindow>,
+}
+
 #[derive(Deserialize)]
 pub struct InputData {
     pub model: Model,
@@ -117,6 +162,10 @@ pub struct InputData {
     pub transcript_path: String,
     pub cost: Option<Cost>,
     pub output_style: Option<OutputStyle>,
+    #[serde(default)]
+    pub effort: Option<Effort>,
+    #[serde(default)]
+    pub rate_limits: Option<RateLimits>,
 }
 
 // OpenAI-style nested token details
