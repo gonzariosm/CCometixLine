@@ -345,6 +345,13 @@ show_percent = true                        # set to false to hide the "· 48%" s
 
 Token usage percentage based on transcript analysis with context limit tracking.
 
+The context limit is resolved in this order:
+
+1. `context_window.context_window_size` from the statusline JSON that Claude Code sends (authoritative for the active model, e.g. 1M for Fable / Mythos).
+2. A `[[context_modifiers]]` match (e.g. `[1m]`) or a `[[models]]` entry in `models.toml`.
+3. Built-in families: Sonnet / Opus / Haiku default to 200k, Fable / Mythos default to 1M.
+4. 200k when nothing matches.
+
 ## Configuration
 
 CCometixLine supports full configuration via TOML files and interactive TUI:
@@ -368,7 +375,7 @@ Supported segments: Model, Directory, Git, Context Window, Usage, Credits, Cost,
 
 Location: `~/.claude/ccline/models.toml` (auto-created on first run)
 
-This file configures how model IDs are displayed and their context window limits. Claude models (Sonnet, Opus, Haiku) are automatically recognized with version extraction — you only need this file for overrides or third-party models.
+This file configures how model IDs are displayed and their context window limits. Claude models (Sonnet, Opus, Haiku, Fable, Mythos) are automatically recognized with version extraction — you only need this file for overrides or third-party models.
 
 ```toml
 # Model entries: simple substring matching on the model ID
