@@ -2,12 +2,26 @@ use super::{Segment, SegmentData};
 use crate::config::{InputData, ModelConfig, SegmentId};
 use std::collections::HashMap;
 
-#[derive(Default)]
-pub struct ModelSegment;
+pub struct ModelSegment {
+    /// Whether the effort level is appended to the model name
+    /// (`show_effort` option of the model segment, default: true)
+    show_effort: bool,
+}
+
+impl Default for ModelSegment {
+    fn default() -> Self {
+        Self { show_effort: true }
+    }
+}
 
 impl ModelSegment {
     pub fn new() -> Self {
-        Self
+        Self::default()
+    }
+
+    pub fn with_show_effort(mut self, show_effort: bool) -> Self {
+        self.show_effort = show_effort;
+        self
     }
 }
 
@@ -26,7 +40,7 @@ impl Segment for ModelSegment {
             .map(str::to_string);
 
         let secondary = match &effort_level {
-            Some(level) if Self::show_effort_enabled() => format!("· {}", level),
+            Some(level) if self.show_effort => format!("· {}", level),
             _ => String::new(),
         };
 
@@ -47,22 +61,6 @@ impl Segment for ModelSegment {
 }
 
 impl ModelSegment {
-    /// Whether the effort level should be appended to the model name.
-    /// Controlled by the `show_effort` option of the model segment (default: true).
-    fn show_effort_enabled() -> bool {
-        crate::config::Config::load()
-            .ok()
-            .and_then(|config| {
-                config
-                    .segments
-                    .iter()
-                    .find(|s| s.id == SegmentId::Model)
-                    .and_then(|sc| sc.options.get("show_effort"))
-                    .and_then(|v| v.as_bool())
-            })
-            .unwrap_or(true)
-    }
-
     fn format_model_name(&self, id: &str, display_name: &str) -> String {
         let model_config = ModelConfig::load();
 

@@ -127,7 +127,9 @@ pub struct ResetsAt(String);
 impl ResetsAt {
     fn from_json(value: &serde_json::Value) -> Option<Self> {
         match value {
-            serde_json::Value::String(s) if !s.trim().is_empty() => Some(Self(s.clone())),
+            serde_json::Value::String(s) => chrono::DateTime::parse_from_rfc3339(s.trim())
+                .ok()
+                .map(|dt| Self(dt.to_rfc3339())),
             serde_json::Value::Number(n) => {
                 let secs = n
                     .as_i64()
@@ -139,8 +141,8 @@ impl ResetsAt {
     }
 
     /// Normalized RFC 3339 string so downstream code handles one format
-    pub fn to_rfc3339(&self) -> Option<String> {
-        Some(self.0.clone())
+    pub fn to_rfc3339(&self) -> String {
+        self.0.clone()
     }
 }
 
@@ -165,7 +167,9 @@ pub struct RateLimitWindow {
 /// Rate limits reported by Claude Code (five-hour session, seven-day week)
 #[derive(Debug, Clone, Deserialize)]
 pub struct RateLimits {
+    #[serde(default)]
     pub five_hour: Option<RateLimitWindow>,
+    #[serde(default)]
     pub seven_day: Option<RateLimitWindow>,
 }
 
@@ -494,4 +498,52 @@ pub struct TranscriptEntry {
     #[serde(rename = "parentUuid")]
     pub parent_uuid: Option<String>,
     pub summary: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn window(json: &str) -> RateLimitWindow {
+        serde_json::from_str(json).expect("window should deserialize")
+    }
+
+    #[test]
+    fn resets_at_accepts_integer_and_fractional_epoch() {
+        let w = window(r#"{"resets_at": 1758750000}"#);
+        assert_eq!(
+            w.resets_at.map(|r| r.to_rfc3339()).as_deref(),
+            Some("2025-09-24T21:40:00+00:00")
+        );
+        let w = window(r#"{"resets_at": 1758750000.5}"#);
+        assert_eq!(
+            w.resets_at.map(|r| r.to_rfc3339()).as_deref(),
+            Some("2025-09-24T21:40:00+00:00")
+        );
+    }
+
+    #[test]
+    fn resets_at_normalizes_rfc3339_and_rejects_other_strings() {
+        let w = window(r#"{"resets_at": "2025-09-24T23:40:00+02:00"}"#);
+        assert_eq!(
+            w.resets_at.map(|r| r.to_rfc3339()).as_deref(),
+            Some("2025-09-24T23:40:00+02:00")
+        );
+        let w = window(r#"{"resets_at": "tomorrow"}"#);
+        assert!(w.resets_at.is_none());
+        let w = window(r#"{"resets_at": ""}"#);
+        assert!(w.resets_at.is_none());
+        let w = window(r#"{"resets_at": true}"#);
+        assert!(w.resets_at.is_none());
+    }
+
+    #[test]
+    fn rate_limits_accept_a_single_window() {
+        let limits: RateLimits =
+            serde_json::from_str(r#"{"seven_day": {"used_percentage": 17}}"#).unwrap();
+        assert!(limits.five_hour.is_none());
+        assert_eq!(limits.seven_day.and_then(|w| w.used_percentage), Some(17.0));
+        let limits: RateLimits = serde_json::from_str("{}").unwrap();
+        assert!(limits.five_hour.is_none() && limits.seven_day.is_none());
+    }
 }

@@ -1,37 +1,46 @@
-use super::usage::load_usage_data;
+use super::usage::{load_usage_data, UsageOptions};
 use super::{Segment, SegmentData};
 use crate::config::{InputData, SegmentId};
 use std::collections::HashMap;
 
 /// Extra-usage credits spent this month against the seat's spend limit,
 /// e.g. `$23.75/$50 · 48%`. Only rendered when the organization enables credits.
-#[derive(Default)]
-pub struct CreditsSegment;
+pub struct CreditsSegment {
+    /// Whether the used percentage is appended (`show_percent` option, default: true)
+    show_percent: bool,
+    /// API / cache settings shared with the `usage` segment
+    usage_options: UsageOptions,
+}
+
+impl Default for CreditsSegment {
+    fn default() -> Self {
+        Self {
+            show_percent: true,
+            usage_options: UsageOptions::default(),
+        }
+    }
+}
 
 impl CreditsSegment {
     pub fn new() -> Self {
-        Self
+        Self::default()
     }
 
-    /// Whether the used percentage is appended (`show_percent` option, default: true)
-    fn show_percent_enabled() -> bool {
-        crate::config::Config::load()
-            .ok()
-            .and_then(|config| {
-                config
-                    .segments
-                    .iter()
-                    .find(|s| s.id == SegmentId::Credits)
-                    .and_then(|sc| sc.options.get("show_percent"))
-                    .and_then(|v| v.as_bool())
-            })
-            .unwrap_or(true)
+    pub fn with_show_percent(mut self, show_percent: bool) -> Self {
+        self.show_percent = show_percent;
+        self
+    }
+
+    /// Use the `usage` segment's API / cache options from the active configuration
+    pub fn with_usage_options(mut self, options: UsageOptions) -> Self {
+        self.usage_options = options;
+        self
     }
 }
 
 impl Segment for CreditsSegment {
     fn collect(&self, input: &InputData) -> Option<SegmentData> {
-        let usage = load_usage_data(input)?;
+        let usage = load_usage_data(input, &self.usage_options)?;
         let credits = usage.extra_credits?;
 
         let percent = if credits.limit > 0.0 {
@@ -40,7 +49,7 @@ impl Segment for CreditsSegment {
             0
         };
 
-        let secondary = if Self::show_percent_enabled() {
+        let secondary = if self.show_percent {
             format!("· {}%", percent)
         } else {
             String::new()

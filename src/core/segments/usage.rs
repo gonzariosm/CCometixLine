@@ -132,21 +132,23 @@ impl UsageData {
         }
     }
 
+    /// Build from the `rate_limits` block Claude Code passes. Each window is
+    /// independently optional; `None` only when neither is present.
     fn from_input(limits: &crate::config::RateLimits) -> Option<Self> {
-        let five_hour = limits.five_hour.as_ref()?;
+        let five_hour = limits.five_hour.as_ref();
+        let seven_day = limits.seven_day.as_ref();
+        if five_hour.is_none() && seven_day.is_none() {
+            return None;
+        }
         Some(Self {
-            five_hour_utilization: five_hour.used_percentage.unwrap_or(0.0),
-            seven_day_utilization: limits
-                .seven_day
-                .as_ref()
-                .and_then(|w| w.used_percentage)
-                .unwrap_or(0.0),
-            five_hour_resets_at: five_hour.resets_at.as_ref().and_then(|r| r.to_rfc3339()),
-            seven_day_resets_at: limits
-                .seven_day
-                .as_ref()
+            five_hour_utilization: five_hour.and_then(|w| w.used_percentage).unwrap_or(0.0),
+            seven_day_utilization: seven_day.and_then(|w| w.used_percentage).unwrap_or(0.0),
+            five_hour_resets_at: five_hour
                 .and_then(|w| w.resets_at.as_ref())
-                .and_then(|r| r.to_rfc3339()),
+                .map(|r| r.to_rfc3339()),
+            seven_day_resets_at: seven_day
+                .and_then(|w| w.resets_at.as_ref())
+                .map(|r| r.to_rfc3339()),
             // Claude Code does not pass credit information in the statusline input
             extra_credits: None,
         })
@@ -165,12 +167,74 @@ impl UsageData {
     }
 }
 
+/// Options of the `usage` segment, read from the active configuration
+#[derive(Debug, Clone)]
+pub struct UsageOptions {
+    pub api_base_url: String,
+    pub cache_duration: u64,
+    pub timeout: u64,
+    /// "time" (default): clock time / weekday. "countdown": time remaining, e.g. "4h 52m"
+    pub countdown: bool,
+    pub show_weekly: bool,
+}
+
+impl Default for UsageOptions {
+    fn default() -> Self {
+        Self {
+            api_base_url: "https://api.anthropic.com".to_string(),
+            cache_duration: 300,
+            timeout: 2,
+            countdown: false,
+            show_weekly: true,
+        }
+    }
+}
+
+impl UsageOptions {
+    /// Read the options from a segment's `options` map, keeping defaults for missing keys
+    pub fn from_map(options: &HashMap<String, serde_json::Value>) -> Self {
+        let defaults = Self::default();
+        Self {
+            api_base_url: options
+                .get("api_base_url")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+                .unwrap_or(defaults.api_base_url),
+            cache_duration: options
+                .get("cache_duration")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(defaults.cache_duration),
+            timeout: options
+                .get("timeout")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(defaults.timeout),
+            countdown: options
+                .get("reset_format")
+                .and_then(|v| v.as_str())
+                .map(|v| v == "countdown")
+                .unwrap_or(defaults.countdown),
+            show_weekly: options
+                .get("show_weekly")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(defaults.show_weekly),
+        }
+    }
+}
+
 #[derive(Default)]
-pub struct UsageSegment;
+pub struct UsageSegment {
+    options: UsageOptions,
+}
 
 impl UsageSegment {
     pub fn new() -> Self {
-        Self
+        Self::default()
+    }
+
+    /// Use the options of the active configuration instead of the defaults
+    pub fn with_options(mut self, options: UsageOptions) -> Self {
+        self.options = options;
+        self
     }
 
     fn get_circle_icon(utilization: f64) -> String {
@@ -356,37 +420,21 @@ impl UsageSegment {
     }
 }
 
-/// Usage data is fetched once per statusline render and shared by every
-/// segment that needs it (Usage, Credits).
-static USAGE_DATA: std::sync::OnceLock<Option<UsageData>> = std::sync::OnceLock::new();
-
-/// Load usage data: API (cached on disk, options from the `usage` segment),
-/// falling back to the `rate_limits` block Claude Code passes in the input.
-pub(crate) fn load_usage_data(input: &InputData) -> Option<UsageData> {
-    USAGE_DATA
-        .get_or_init(|| UsageSegment::new().load(input))
-        .clone()
+/// Load usage data: API (cached on disk with `options.cache_duration`), falling
+/// back to the `rate_limits` block Claude Code passes in the input. Shared by
+/// the Usage and Credits segments; the on-disk cache means the second caller in
+/// a render reads the response the first one fetched instead of hitting the API.
+pub(crate) fn load_usage_data(input: &InputData, options: &UsageOptions) -> Option<UsageData> {
+    UsageSegment::new()
+        .with_options(options.clone())
+        .load(input)
 }
 
 impl UsageSegment {
     fn load(&self, input: &InputData) -> Option<UsageData> {
-        let config = crate::config::Config::load().ok()?;
-        let segment_config = config.segments.iter().find(|s| s.id == SegmentId::Usage);
-
-        let api_base_url = segment_config
-            .and_then(|sc| sc.options.get("api_base_url"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("https://api.anthropic.com");
-
-        let cache_duration = segment_config
-            .and_then(|sc| sc.options.get("cache_duration"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(300);
-
-        let timeout = segment_config
-            .and_then(|sc| sc.options.get("timeout"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(2);
+        let api_base_url = self.options.api_base_url.as_str();
+        let cache_duration = self.options.cache_duration;
+        let timeout = self.options.timeout;
 
         // Rate limits passed by Claude Code itself: no network needed, used as fallback
         let input_data = input.rate_limits.as_ref().and_then(UsageData::from_input);
@@ -422,22 +470,10 @@ impl UsageSegment {
 
 impl Segment for UsageSegment {
     fn collect(&self, input: &InputData) -> Option<SegmentData> {
-        let config = crate::config::Config::load().ok()?;
-        let segment_config = config.segments.iter().find(|s| s.id == SegmentId::Usage);
+        let countdown = self.options.countdown;
+        let show_weekly = self.options.show_weekly;
 
-        // "time" (default): clock time / weekday. "countdown": time remaining, e.g. "4h 52m"
-        let countdown = segment_config
-            .and_then(|sc| sc.options.get("reset_format"))
-            .and_then(|v| v.as_str())
-            .map(|v| v == "countdown")
-            .unwrap_or(false);
-
-        let show_weekly = segment_config
-            .and_then(|sc| sc.options.get("show_weekly"))
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
-
-        let usage = load_usage_data(input)?;
+        let usage = self.load(input)?;
 
         let dynamic_icon = Self::get_circle_icon(usage.seven_day_utilization / 100.0);
         let five_hour_percent = usage.five_hour_utilization.round() as u8;
