@@ -169,6 +169,22 @@ pub struct RateLimits {
     pub seven_day: Option<RateLimitWindow>,
 }
 
+/// Context window info reported by Claude Code for the current session.
+/// `context_window_size` is the authoritative limit for the active model
+/// (e.g. 1,000,000 for models with a native 1M window), so it takes priority
+/// over any limit derived from the model ID.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ContextWindow {
+    #[serde(default)]
+    pub context_window_size: Option<u32>,
+    #[serde(default)]
+    pub total_input_tokens: Option<u32>,
+    #[serde(default)]
+    pub total_output_tokens: Option<u32>,
+    #[serde(default)]
+    pub used_percentage: Option<f64>,
+}
+
 #[derive(Deserialize)]
 pub struct InputData {
     pub model: Model,
@@ -180,6 +196,8 @@ pub struct InputData {
     pub effort: Option<Effort>,
     #[serde(default)]
     pub rate_limits: Option<RateLimits>,
+    #[serde(default)]
+    pub context_window: Option<ContextWindow>,
 }
 
 // OpenAI-style nested token details
