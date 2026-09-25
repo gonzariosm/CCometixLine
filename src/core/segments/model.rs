@@ -17,9 +17,26 @@ impl Segment for ModelSegment {
         metadata.insert("model_id".to_string(), input.model.id.clone());
         metadata.insert("display_name".to_string(), input.model.display_name.clone());
 
+        let effort_level = input
+            .effort
+            .as_ref()
+            .and_then(|e| e.level.as_deref())
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(str::to_string);
+
+        let secondary = match &effort_level {
+            Some(level) if Self::show_effort_enabled() => format!("· {}", level),
+            _ => String::new(),
+        };
+
+        if let Some(level) = effort_level {
+            metadata.insert("effort_level".to_string(), level);
+        }
+
         Some(SegmentData {
             primary: self.format_model_name(&input.model.id, &input.model.display_name),
-            secondary: String::new(),
+            secondary,
             metadata,
         })
     }
@@ -30,6 +47,22 @@ impl Segment for ModelSegment {
 }
 
 impl ModelSegment {
+    /// Whether the effort level should be appended to the model name.
+    /// Controlled by the `show_effort` option of the model segment (default: true).
+    fn show_effort_enabled() -> bool {
+        crate::config::Config::load()
+            .ok()
+            .and_then(|config| {
+                config
+                    .segments
+                    .iter()
+                    .find(|s| s.id == SegmentId::Model)
+                    .and_then(|sc| sc.options.get("show_effort"))
+                    .and_then(|v| v.as_bool())
+            })
+            .unwrap_or(true)
+    }
+
     fn format_model_name(&self, id: &str, display_name: &str) -> String {
         let model_config = ModelConfig::load();
 

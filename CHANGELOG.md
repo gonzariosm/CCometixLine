@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-25
+
+### Added
+- **Effort Level**: Parse `effort.level` from the statusline JSON and show it in the model segment, e.g. "Fable 5.1 · high" (`show_effort`)
+- **Credits Segment**: New `credits` segment ("$23.75/$50 · 48%") from the API's `extra_usage`, sharing one usage fetch per render with the usage segment; added to every theme preset and migrated into existing configs after `usage`
+- **Weekly Usage Block**: Usage segment shows the seven-day block ("7d 16% · Thu 00h") and supports `reset_format = "countdown"`
+- **Per-Segment Options**: Registry of options with defaults, descriptions and choices; CLI `--options`, `--set SEGMENT.KEY=VALUE`, `--unset SEGMENT.KEY`; TUI Settings panel edits them inline
+- **Install Script**: `scripts/install.sh` builds the release binary, installs it to `~/.claude/ccline/ccline` with a backup and links `~/.local/bin/ccline`
+- **Built-in Model Families**: Fable and Mythos are recognized with a 1M default context window
+
+### Changed
+- **Usage Reset Time**: The five-hour reset time is shown next to the five-hour percentage instead of the weekly one; falls back to Claude Code's `rate_limits` when the API or token is missing
+- **Usage Cache**: Reset timestamps and credits are cached; the cache file is versioned so entries from older builds are ignored
+- **TUI**: Settings panel and segment list scroll on short terminals; quitting with unsaved changes asks to save, discard or keep editing; the TUI starts from `config.toml` and applies a theme file only when a theme is selected
+
+### Fixed
+- **Context Window Limit**: Prefer `context_window.context_window_size` from the statusline JSON over the model-derived limit; Fable 5.1 previously showed 468% at 937k tokens because it fell back to 200k
+- **resets_at Parsing**: A fractional epoch (e.g. `1758750000.5`) rejected the whole statusline input and blanked every segment; integer, fractional and RFC 3339 values are now accepted, anything else shows "?" for the reset time only
+- **`--options` with `--set`/`--unset`**: The option listing is printed after applying the change instead of being ignored
+
+### Documentation
+- README documents the fork install, the new segments, option editing and the context limit resolution order
+
 ## [1.1.2] - 2026-03-15
 
 ### Changed
