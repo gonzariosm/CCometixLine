@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build this fork from source and install it as the Claude Code statusline.
+# Build from source and install as the Claude Code statusline.
 #
 # - Installs the binary to ~/.claude/ccline/ccline (the path Claude Code runs).
 # - Links ~/.local/bin/ccline to it so the `ccline` command works from a shell.

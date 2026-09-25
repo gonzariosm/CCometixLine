@@ -39,16 +39,10 @@ The statusline shows: Model | Directory | Git Branch Status | Context Window Inf
 
 ## Installation
 
-### This fork: install from source (Recommended)
-
-This fork carries changes that are not published to npm: effort level next to
-the model, session and weekly reset times in the Usage segment, a Credits
-segment, segment options editable from the TUI and the CLI, and an
-unsaved-changes prompt in the TUI. Install it from source so nothing else
-overwrites it:
+### Install from source
 
 ```bash
-git clone git@github.com:gonzariosm/CCometixLine.git
+git clone https://github.com/Haleclipse/CCometixLine.git
 cd CCometixLine
 scripts/install.sh
 ```
@@ -59,11 +53,11 @@ links `~/.local/bin/ccline` to it so the `ccline` command works from a shell.
 Re-run it after pulling changes. Pass `--no-build` to reuse an existing
 `target/release` build.
 
-Do **not** install `@cometix/ccline` from npm alongside this fork: its
-postinstall hard-links the upstream binary over `~/.claude/ccline/ccline`.
-Remove it with `npm uninstall -g @cometix/ccline` if it is present.
+If `@cometix/ccline` is also installed from npm, its postinstall hard-links the
+npm binary over `~/.claude/ccline/ccline`. Remove it with
+`npm uninstall -g @cometix/ccline` to keep the source build.
 
-### Quick Install (upstream npm package)
+### Quick Install (npm)
 
 Install via npm (works on all platforms):
 
